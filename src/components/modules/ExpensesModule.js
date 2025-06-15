@@ -8,26 +8,31 @@ import SearchInput from '../ui/SearchInput';
 
 const ExpensesModule = () => {
   const [expenses, setExpenses] = useState([]);
+  const [categories, setCategories] = useState([]); // Estado para categorías dinámicas
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false); // Nuevo modal para categorías
   const [editingExpense, setEditingExpense] = useState(null);
   const [alert, setAlert] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState(''); // Estado para nueva categoría
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     amount: '',
-    category: 'Suministros',
+    category: '', // Categoría inicial vacía
     description: ''
   });
 
-  const categories = ['Suministros', 'Salarios', 'Servicios', 'Impuestos', 'Otros'];
-
   useEffect(() => {
-    const loadExpenses = async () => {
+    const loadData = async () => {
       const expensesData = await storage.getRecords('expenses');
+      const categoriesData = await storage.getRecords('categories'); // Cargar categorías
       setExpenses(expensesData);
+      setCategories(categoriesData.length > 0 ? categoriesData : ['Suministros', 'Salarios', 'Servicios', 'Impuestos', 'Otros']); // Si no hay, usar default
+      // Asegurar que la categoría por defecto del formulario sea una existente
+      setFormData(prev => ({ ...prev, category: categoriesData[0] || 'Suministros' }));
     };
-    loadExpenses();
+    loadData();
   }, []);
 
   const handleOpenModal = (expense = null) => {
@@ -43,7 +48,7 @@ const ExpensesModule = () => {
       setFormData({
         date: new Date().toISOString().split('T')[0],
         amount: '',
-        category: 'Suministros',
+        category: categories[0] || '', // Usar la primera categoría disponible
         description: ''
       });
     }
@@ -53,6 +58,41 @@ const ExpensesModule = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingExpense(null);
+  };
+
+  const handleOpenCategoryModal = () => {
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleCloseCategoryModal = () => {
+    setIsCategoryModalOpen(false);
+    setNewCategoryName('');
+  };
+
+  const handleAddCategory = async (e) => {
+    e.preventDefault();
+    if (newCategoryName.trim() === '') {
+      setAlert({ message: 'El nombre de la categoría no puede estar vacío.', type: 'error' });
+      return;
+    }
+    if (categories.includes(newCategoryName.trim())) {
+      setAlert({ message: 'Esa categoría ya existe.', type: 'error' });
+      return;
+    }
+    const updatedCategories = [...categories, newCategoryName.trim()];
+    setCategories(updatedCategories);
+    await storage.saveData({ ...storage.getData(), categories: updatedCategories }); // Guardar en storage
+    setAlert({ message: 'Categoría agregada con éxito!', type: 'success' });
+    handleCloseCategoryModal();
+  };
+
+  const handleDeleteCategory = async (categoryToDelete) => {
+    if (window.confirm(`¿Estás seguro de que quieres eliminar la categoría "${categoryToDelete}"? Los gastos asociados no se eliminarán.`)) {
+      const updatedCategories = categories.filter(cat => cat !== categoryToDelete);
+      setCategories(updatedCategories);
+      await storage.saveData({ ...storage.getData(), categories: updatedCategories }); // Guardar en storage
+      setAlert({ message: 'Categoría eliminada con éxito!', type: 'success' });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -113,6 +153,12 @@ const ExpensesModule = () => {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 + Nuevo Gasto
+              </button>
+              <button
+                onClick={handleOpenCategoryModal}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Gestionar Categorías
               </button>
             </div>
           </div>
@@ -210,6 +256,45 @@ const ExpensesModule = () => {
             {editingExpense ? "Guardar Cambios" : "Registrar Gasto"}
           </button>
         </form>
+      </Modal>
+
+      <Modal isOpen={isCategoryModalOpen} onClose={handleCloseCategoryModal} title="Gestionar Categorías de Gastos">
+        <form onSubmit={handleAddCategory} className="space-y-4 mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Categoría</label>
+          <div className="flex space-x-2">
+            <input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              className="flex-grow rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-gray-700"
+              placeholder="Nombre de la categoría"
+              required
+            />
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Agregar
+            </button>
+          </div>
+        </form>
+
+        <div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-3">Categorías Existentes</h3>
+          <ul className="space-y-2">
+            {categories.map(category => (
+              <li key={category} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-200">
+                <span className="text-gray-800">{category}</span>
+                <button
+                  onClick={() => handleDeleteCategory(category)}
+                  className="text-red-600 hover:text-red-900 text-sm"
+                >
+                  Eliminar
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </Modal>
 
       {alert && <Alert message={alert.message} type={alert.type} />}

@@ -4,7 +4,8 @@ const defaultData = {
   version: 1,
   sales: [],
   expenses: [],
-  debts: []
+  debts: [],
+  categories: ['Suministros', 'Salarios', 'Servicios', 'Impuestos', 'Otros'] // Categorías por defecto
 };
 
 const storage = {
@@ -14,12 +15,14 @@ const storage = {
       if (!savedData) return { ...defaultData };
       
       const parsed = JSON.parse(savedData);
+      // Asegurar que todas las colecciones existan y que las categorías se carguen
       return {
         ...defaultData,
         ...parsed,
         sales: parsed.sales || [],
         expenses: parsed.expenses || [],
-        debts: parsed.debts || []
+        debts: parsed.debts || [],
+        categories: parsed.categories || defaultData.categories // Cargar categorías guardadas o usar default
       };
     } catch (error) {
       console.error('Error al cargar datos:', error);

@@ -6,12 +6,109 @@ import Modal from '../ui/Modal';
 import Alert from '../ui/Alert';
 import SearchInput from '../ui/SearchInput';
 
+// Componente para el historial de un cliente/deudor
+const ClientHistoryModal = ({ isOpen, onClose, clientName, clientDebts, allSales, allExpenses }) => {
+  const clientSales = allSales.filter(sale => sale.client && sale.client.toLowerCase() === clientName.toLowerCase());
+  const clientExpenses = allExpenses.filter(expense => expense.client && expense.client.toLowerCase() === clientName.toLowerCase()); // Asumiendo que los gastos también pueden asociarse a un cliente
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={`Historial de ${clientName}`}>
+      <div className="space-y-6">
+        {/* Sección de Deudas */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Deudas y Pagos</h3>
+          {clientDebts.length > 0 ? (
+            <div className="space-y-3">
+              {clientDebts.map(debt => (
+                <div key={debt.id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <p className="font-medium text-gray-800">Deuda Original: {formatCurrency(debt.amount)}</p>
+                  <p className="text-sm text-gray-600">Descripción Inicial: {debt.description}</p>
+                  <p className="text-sm text-gray-600">Fecha de Inicio: {formatDate(debt.date)}</p>
+                  <p className={`text-sm font-semibold ${debt.remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    Pendiente: {formatCurrency(debt.remaining)}
+                  </p>
+                  
+                  {debt.transactions && debt.transactions.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-sm font-medium text-gray-700">Movimientos:</p>
+                      <ul className="list-disc list-inside text-sm text-gray-600">
+                        {debt.transactions
+                          .sort((a, b) => new Date(a.date) - new Date(b.date)) // Ordenar por fecha
+                          .map((transaction, idx) => (
+                          <li key={idx} className="mb-1">
+                            <span className="font-semibold">
+                              {transaction.type === 'payment' ? 'Pago' : 'Aumento'}:
+                            </span> 
+                            {formatCurrency(transaction.amount)} el {formatDate(transaction.date)}
+                            {transaction.description && ` - ${transaction.description}`}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-600">No hay deudas registradas para este cliente.</p>
+          )}
+        </div>
+
+        {/* Sección de Ventas */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Ventas Realizadas</h3>
+          {clientSales.length > 0 ? (
+            <div className="space-y-3">
+              {clientSales.map(sale => (
+                <div key={sale.id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <p className="font-medium text-gray-800">Venta: {formatCurrency(sale.amount)}</p>
+                  <p className="text-sm text-gray-600">Descripción: {sale.description}</p>
+                  <p className="text-sm text-gray-600">Fecha: {formatDate(sale.date)}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-600">No hay ventas registradas para este cliente.</p>
+          )}
+        </div>
+
+        {/* Sección de Gastos (si aplica) */}
+        {/* <div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Gastos Asociados</h3>
+          {clientExpenses.length > 0 ? (
+            <div className="space-y-3">
+              {clientExpenses.map(expense => (
+                <div key={expense.id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <p className="font-medium text-gray-800">Gasto: {formatCurrency(expense.amount)}</p>
+                  <p className="text-sm text-gray-600">Categoría: {expense.category}</p>
+                  <p className="text-sm text-gray-600">Descripción: {expense.description}</p>
+                  <p className="text-sm text-gray-600">Fecha: {formatDate(expense.date)}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-600">No hay gastos asociados a este cliente.</p>
+          )}
+        </div> */}
+      </div>
+    </Modal>
+  );
+};
+
+
 const DebtsModule = () => {
   const [debts, setDebts] = useState([]);
+  const [allSales, setAllSales] = useState([]); // Para el historial de ventas del cliente
+  const [allExpenses, setAllExpenses] = useState([]); // Para el historial de gastos del cliente
+
   const [isDebtModalOpen, setIsDebtModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [isAddMoreDebtModalOpen, setIsAddMoreDebtModalOpen] = useState(false); // Nuevo modal
+  const [isAddMoreDebtModalOpen, setIsAddMoreDebtModalOpen] = useState(false);
+  const [isClientHistoryModalOpen, setIsClientHistoryModalOpen] = useState(false); 
+  
   const [editingDebt, setEditingDebt] = useState(null);
+  const [selectedClientForHistory, setSelectedClientForHistory] = useState(null); 
+  
   const [alert, setAlert] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -25,10 +122,11 @@ const DebtsModule = () => {
   const [paymentFormData, setPaymentFormData] = useState({
     debtId: '',
     amount: '',
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split('T')[0],
+    description: '' 
   });
 
-  const [addMoreDebtFormData, setAddMoreDebtFormData] = useState({ // Nuevo estado para "Agregar Más Deuda"
+  const [addMoreDebtFormData, setAddMoreDebtFormData] = useState({
     debtId: '',
     amount: '',
     description: '',
@@ -36,11 +134,15 @@ const DebtsModule = () => {
   });
 
   useEffect(() => {
-    const loadDebts = async () => {
+    const loadData = async () => {
       const debtsData = await storage.getRecords('debts');
+      const salesData = await storage.getRecords('sales');
+      const expensesData = await storage.getRecords('expenses');
       setDebts(debtsData);
+      setAllSales(salesData);
+      setAllExpenses(expensesData);
     };
-    loadDebts();
+    loadData();
   }, []);
 
   const handleOpenDebtModal = (debt = null) => {
@@ -72,7 +174,8 @@ const DebtsModule = () => {
     setPaymentFormData({
       debtId: '',
       amount: '',
-      date: new Date().toISOString().split('T')[0]
+      date: new Date().toISOString().split('T')[0],
+      description: ''
     });
     setIsPaymentModalOpen(true);
   };
@@ -81,7 +184,7 @@ const DebtsModule = () => {
     setIsPaymentModalOpen(false);
   };
 
-  const handleOpenAddMoreDebtModal = () => { // Abre el nuevo modal
+  const handleOpenAddMoreDebtModal = () => {
     setAddMoreDebtFormData({
       debtId: '',
       amount: '',
@@ -91,14 +194,23 @@ const DebtsModule = () => {
     setIsAddMoreDebtModalOpen(true);
   };
 
-  const handleCloseAddMoreDebtModal = () => { // Cierra el nuevo modal
+  const handleCloseAddMoreDebtModal = () => {
     setIsAddMoreDebtModalOpen(false);
+  };
+
+  const handleOpenClientHistoryModal = (clientName) => {
+    setSelectedClientForHistory(clientName);
+    setIsClientHistoryModalOpen(true);
+  };
+
+  const handleCloseClientHistoryModal = () => {
+    setIsClientHistoryModalOpen(false);
+    setSelectedClientForHistory(null);
   };
 
   const handleAddDebt = async (e) => {
     e.preventDefault();
     try {
-      // Prevenir deudas duplicadas por cliente si no estamos editando
       if (!editingDebt) {
         const existingDebt = debts.find(d => d.client.toLowerCase() === debtFormData.client.toLowerCase() && d.remaining > 0);
         if (existingDebt) {
@@ -120,7 +232,8 @@ const DebtsModule = () => {
           ...debtFormData,
           amount: parseFloat(debtFormData.amount),
           remaining: parseFloat(debtFormData.amount),
-          payments: []
+          payments: [],
+          transactions: [] // Inicializar transacciones
         };
         result = await storage.addRecord('debts', debt);
         setDebts([...debts, result]);
@@ -137,8 +250,10 @@ const DebtsModule = () => {
     e.preventDefault();
     try {
       const payment = {
+        type: 'payment',
         amount: parseFloat(paymentFormData.amount),
-        date: paymentFormData.date
+        date: paymentFormData.date,
+        description: paymentFormData.description 
       };
       
       const updatedDebts = debts.map(debt => {
@@ -146,8 +261,9 @@ const DebtsModule = () => {
           const updatedRemaining = debt.remaining - payment.amount;
           return {
             ...debt,
-            payments: [...debt.payments, payment],
-            remaining: updatedRemaining < 0 ? 0 : updatedRemaining // No permitir restante negativo
+            payments: [...debt.payments, payment], 
+            transactions: [...(debt.transactions || []), payment], 
+            remaining: updatedRemaining < 0 ? 0 : updatedRemaining
           };
         }
         return debt;
@@ -166,7 +282,7 @@ const DebtsModule = () => {
     }
   };
 
-  const handleAddMoreDebt = async (e) => { // Nueva función para "Agregar Más Deuda"
+  const handleAddMoreDebt = async (e) => {
     e.preventDefault();
     try {
       const debtToModify = debts.find(d => d.id === parseInt(addMoreDebtFormData.debtId));
@@ -179,13 +295,20 @@ const DebtsModule = () => {
       const updatedAmount = debtToModify.amount + additionalAmount;
       const updatedRemaining = debtToModify.remaining + additionalAmount;
 
+      const newTransaction = {
+        type: 'increase',
+        amount: additionalAmount,
+        date: addMoreDebtFormData.date,
+        description: addMoreDebtFormData.description 
+      };
+
       const updatedDebts = debts.map(d => {
         if (d.id === debtToModify.id) {
           return {
             ...d,
             amount: updatedAmount,
             remaining: updatedRemaining,
-            description: d.description + (addMoreDebtFormData.description ? ` (+${addMoreDebtFormData.description})` : '')
+            transactions: [...(d.transactions || []), newTransaction] 
           };
         }
         return d;
@@ -241,7 +364,7 @@ const DebtsModule = () => {
                 + Registrar Pago
               </button>
               <button
-                onClick={handleOpenAddMoreDebtModal} // Botón para "Agregar Más Deuda"
+                onClick={handleOpenAddMoreDebtModal}
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
               >
                 + Más Deuda
@@ -263,7 +386,14 @@ const DebtsModule = () => {
                 {filteredDebts.map((debt) => (
                   <tr key={debt.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{formatDate(debt.date)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{debt.client}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                      <button 
+                        onClick={() => handleOpenClientHistoryModal(debt.client)}
+                        className="text-blue-600 hover:underline"
+                      >
+                        {debt.client}
+                      </button>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{formatCurrency(debt.amount)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <span className={debt.remaining > 0 ? 'text-red-600' : 'text-green-600'}>
@@ -385,6 +515,16 @@ const DebtsModule = () => {
               required
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (opcional)</label>
+            <textarea
+              value={paymentFormData.description}
+              onChange={(e) => setPaymentFormData({...paymentFormData, description: e.target.value})}
+              className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-gray-700"
+              rows={2}
+              placeholder="Ej: Pago en efectivo, transferencia"
+            />
+          </div>
           <button
             type="submit"
             className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
@@ -454,6 +594,17 @@ const DebtsModule = () => {
           </button>
         </form>
       </Modal>
+
+      {selectedClientForHistory && (
+        <ClientHistoryModal
+          isOpen={isClientHistoryModalOpen}
+          onClose={handleCloseClientHistoryModal}
+          clientName={selectedClientForHistory}
+          clientDebts={debts.filter(d => d.client.toLowerCase() === selectedClientForHistory.toLowerCase())}
+          allSales={allSales}
+          allExpenses={allExpenses}
+        />
+      )}
 
       {alert && <Alert message={alert.message} type={alert.type} />}
     </div>

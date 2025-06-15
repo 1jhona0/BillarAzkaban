@@ -1,16 +1,22 @@
 import React from 'react';
-import { sales, expenses, debts } from '../mock/financeData';
-import { formatCurrency, calculateTotals } from '../utils/financeHelpers';
+import { formatCurrency } from '../utils/financeHelpers';
+import { loadData } from '../utils/storage';
+import FinanceCharts from './FinanceCharts';
 
 const FinanceDashboard = () => {
-  const totalSales = calculateTotals(sales);
-  const totalExpenses = calculateTotals(expenses);
+  const sales = loadData('sales');
+  const expenses = loadData('expenses');
+  const debts = loadData('debts');
+
+  const totalSales = sales.reduce((sum, sale) => sum + sale.amount, 0);
+  const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
   const totalDebts = debts.reduce((sum, debt) => sum + debt.remaining, 0);
   const profit = totalSales - totalExpenses;
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* KPIs actualizados para usar datos reales */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-medium text-gray-500">Ventas Totales</h3>
           <p className="text-3xl font-bold">{formatCurrency(totalSales)}</p>
@@ -20,7 +26,7 @@ const FinanceDashboard = () => {
           <p className="text-3xl font-bold text-red-600">-{formatCurrency(totalExpenses)}</p>
         </div>
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-gray-500">Utilidad</h3>
+          <h3 className="text-lg font-medium text-gray-500">Utilidad Neta</h3>
           <p className={`text-3xl font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {formatCurrency(profit)}
           </p>
@@ -31,22 +37,16 @@ const FinanceDashboard = () => {
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-lg font-medium mb-4">Resumen Mensual</h2>
-        {/* Aquí irían los gráficos */}
-        <div className="h-64 bg-gray-100 rounded flex items-center justify-center">
-          <p className="text-gray-500">Gráfico de ventas vs gastos por mes</p>
-        </div>
-      </div>
+      <FinanceCharts />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-medium mb-4">Últimas Ventas</h2>
-          {/* Lista de últimas ventas */}
+          <h3 className="text-lg font-medium mb-4">Últimas Ventas</h3>
+          {/* Lista condensada de últimas ventas */}
         </div>
         <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-medium mb-4">Gastos por Categoría</h2>
-          {/* Gráfico de gastos por categoría */}
+          <h3 className="text-lg font-medium mb-4">Gastos Recientes</h3>
+          {/* Lista condensada de últimos gastos */}
         </div>
       </div>
     </div>

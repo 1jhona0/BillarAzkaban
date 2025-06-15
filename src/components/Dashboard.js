@@ -43,6 +43,8 @@ const Dashboard = () => {
         } else if (timeRange === 'range' && customDateRange.startDate && customDateRange.endDate) {
           startDateFilter = new Date(customDateRange.startDate);
           endDateFilter = new Date(customDateRange.endDate);
+        } else if (timeRange === 'all') {
+          // No filter
         }
 
         if (startDateFilter) {
